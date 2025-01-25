@@ -246,6 +246,41 @@ app.get("/studentcount", async (req, res) => {
 
 // Fee Update Start From Here
 // New route to update fee status UPDATED FROM HERE
+
+// Parse the credentials from environment variable
+let firebaseCredentials;
+try {
+  firebaseCredentials = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+} catch (error) {
+  console.error("Error parsing FIREBASE_CREDENTIALS:", error);
+  process.exit(1);
+}
+
+// Initialize Firebase Admin SDK
+firebaseAdmin.initializeApp({
+  credential: firebaseAdmin.credential.cert(firebaseCredentials)
+});
+
+// Ensure initialization before using Firebase services
+const sendFeeNotification = (rollNumber, feeStatus) => {
+  const message = {
+    notification: {
+      title: 'Fee Status Updated',
+      body: `Your fee status has been updated to ${feeStatus}. Please check your account.`
+    },
+    topic: `rollNumber_${rollNumber}` // Send notification to specific roll number topic
+  };
+
+  firebaseAdmin.messaging().send(message)
+    .then(response => {
+      console.log('Successfully sent notification:', response);
+    })
+    .catch(error => {
+      console.log('Error sending notification:', error);
+    });
+};
+
+// New route to update fee status
 app.put("/updateFeeStatus/:rollNumber", async (req, res) => {
   const { rollNumber } = req.params;
   const { feeStatus } = req.body;
@@ -261,12 +296,17 @@ app.put("/updateFeeStatus/:rollNumber", async (req, res) => {
       sql: `UPDATE "Student-info" SET feeStatus = ? WHERE rollNumber = ?`,
       args: [feeStatus, rollNumber],
     });
+
+    // Send notification for fee status change to specific roll number
+    sendFeeNotification(rollNumber, feeStatus);
+
     res.status(200).send("Fee status updated successfully");
   } catch (error) {
     console.error("Error updating fee status:", error);
     res.status(500).send({ error: "Failed to update fee status" });
   }
 });
+
 
 // New route to fetch students with fee status
 app.get("/studentsWithFeeStatus", async (req, res) => {
@@ -406,19 +446,6 @@ app.get("/api/timetables/classes", (req, res) => {
 });
 
 
-// Parse the credentials from environment variable
-let firebaseCredentials;
-try {
-  firebaseCredentials = JSON.parse(process.env.FIREBASE_CREDENTIALS);
-} catch (error) {
-  console.error("Error parsing FIREBASE_CREDENTIALS:", error);
-  process.exit(1);
-}
-
-// Initialize Firebase Admin SDK
-firebaseAdmin.initializeApp({
-  credential: firebaseAdmin.credential.cert(firebaseCredentials)
-});
 
 // Route to upload general timetable for a specific class
 app.post("/api/timetables/upload/:class", upload.single("file"), (req, res) => {
@@ -581,7 +608,8 @@ const examNotification = (className) => {
       console.log('Error sending notification:', error);
     });
 };
-      
+
+
       // Route to delete exam timetable for a specific class
       app.delete("/api/exam-timetables/delete/:class", (req, res) => {
         const className = req.params.class;
